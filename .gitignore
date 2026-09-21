@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.spec
+
+# 运行期数据（含凭证与会话，绝不入库）
+secrets/
+config/
+logs/
+outputs/
+*.enc
+
+# 机构映射含你所在学校信息，属个人隐私，不入库
+institutions.json
+
+# 工具/IDE
+.workbuddy/
+.vscode/
+.idea/

@@ -1,0 +1,6 @@
+PySide6
+requests
+cryptography
+pywin32
+pillow
+keyring
