@@ -20,3 +20,10 @@ institutions.json
 .workbuddy/
 .vscode/
 .idea/
+
+# 发行构建产物（不入库，用 tools/make_zip 脚本按需生成）
+*.zip
+_build.log
+_smoke.json
+_smoke_home/
+_release_notes.md
