@@ -185,6 +185,16 @@ class PageView(QWidget):
         return int(BASE_WIDTH * self._aspect * self._zoom)
 
     # ---------------------------------------------------------------- 打开
+    @property
+    def item(self):
+        """当前显示的文献对象（供宿主判断"要不要重新打开"）。"""
+        return self._item
+
+    @property
+    def stable_id(self) -> str:
+        """当前文献的稳定标识（供宿主/回归断言比对）。"""
+        return getattr(self._item, "stable_id", "") or ""
+
     def open_item(self, item) -> None:
         self._item = item
         self._open_seq = getattr(self, "_open_seq", 0) + 1      # 防串门：渲染结果过期即弃

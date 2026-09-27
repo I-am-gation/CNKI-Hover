@@ -8,16 +8,31 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
 _ENV_HOME = "CNKI_HOVER_HOME"
 
 
+def _normalize_override(p: str) -> Path:
+    """规范化运行根覆盖值。
+
+    为什么要这一步：Windows 上 `Path("/d/Projects/xxx").resolve()` 会被当成
+    「根目录 + 相对路径」，解析成 `D:\\d\\Projects\\xxx`（凭空多出一层 `d`），
+    于是凭空造出一个假目录树。这里把 POSIX 形态的盘符前缀还原成盘符。
+    """
+    s = (p or "").strip().replace("/", "\\")
+    m = re.match(r"^\\([A-Za-z])\\(.*)$", s)
+    if m:                       # /d/Projects/... -> D:\Projects\...
+        s = "%s:\\%s" % (m.group(1).upper(), m.group(2))
+    return Path(s).resolve()
+
+
 def _resolve_root() -> Path:
     override = os.environ.get(_ENV_HOME)
     if override:
-        return Path(override).resolve()
+        return _normalize_override(override)
     # 打包态（PyInstaller）：绝不能落在 _MEIPASS —— 那是临时解包目录，
     # 单文件模式退出即删、目录模式也在安装目录内（通常不可写）。
     # 配置/会话/缓存必须落到**用户可写且持久**的位置。

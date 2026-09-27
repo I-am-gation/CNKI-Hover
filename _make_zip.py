@@ -4,7 +4,8 @@ import sys
 import zipfile
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(BASE, "CNKI-Hover-1.0.0-win-x64.zip")
+VER = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RELEASE_VER", "1.0.0")
+OUT = os.path.join(BASE, "CNKI-Hover-%s-win-x64.zip" % VER)
 SRC = os.path.join(BASE, "dist", "CNKI-Hover")
 
 EXCLUDE_EXT = {".log"}

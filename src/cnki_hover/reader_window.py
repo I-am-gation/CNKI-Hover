@@ -235,7 +235,11 @@ class ReaderWindow(QWidget):
             self.stack.setCurrentWidget(self.browser)
         else:
             self.stack.setCurrentWidget(self.page_view)
-            if self.page_view.page_count <= 0 and self._item is not None:
+            # ⚠️ 判据曾写成 `page_count <= 0` —— 那是「从未打开过」的意思。
+            # 后果：打开 A 之后 page_count>0，再打开 B 时**根本不会重新 open_item**，
+            # 原版 Tab 永远停在 A 的页（用户反馈"没法刷新更新"）。
+            # 正解：**当前显示的不是这条文献**就重新打开。
+            if self._item is not None and self.page_view.item is not self._item:
                 self.page_view.open_item(self._item)
         for b, name in ((self.btn_html, TAB_HTML), (self.btn_orig, TAB_ORIGINAL)):
             b.setProperty("active", "true" if name == tab else "false")
