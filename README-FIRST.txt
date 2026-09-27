@@ -2,12 +2,12 @@ CNKI-Hover · 使用说明（Windows x64）
 ================================================
 
 ■ 安装（推荐：双击安装包）
-  运行 CNKI-Hover-Setup-1.1.0.exe → 一路回车即可。
+  运行 CNKI-Hover-Setup-1.2.1.exe → 按向导点「安装」即可（图形界面，非命令行）。
   默认装到 %LOCALAPPDATA%\Programs\CNKI-Hover，
   会自动建好「开始菜单」和「桌面」快捷方式，并在「添加/删除程序」里登记卸载项。
   不需要管理员权限，也不需要 Python 环境。
 
-  不想安装的话，也可以解压 CNKI-Hover-1.1.0-win-x64.zip 后直接双击 CNKI-Hover.exe。
+  不想安装的话，也可以解压 CNKI-Hover-1.2.1-win-x64.zip 后直接双击 CNKI-Hover.exe。
 
 ■ 首次登录（零配置，不需要手写任何配置文件）
   1. 双击 CNKI-Hover.exe，托盘出现图标，并弹出登录窗；

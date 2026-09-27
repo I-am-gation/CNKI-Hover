@@ -91,6 +91,43 @@ def _ansi(text: str) -> str:
         return text.encode("ascii", errors="replace").decode("ascii")
 
 
+def _shell_folder(name: str, fallback: Path) -> Path:
+    """读 Windows 登记的特殊文件夹**真实路径**（桌面/开始菜单可能被 OneDrive 重定向）。
+
+    为什么必须这样（用户实测反馈"安装后桌面没有快捷方式"）：
+    他的机器上 `C:\\Users\\xxx\\Desktop` 与 `C:\\Users\\xxx\\OneDrive\\Desktop` 同时存在，
+    猜测路径会把快捷方式写进**不是当前桌面的那个**。注册表 `User Shell Folders` 才是权威。
+    """
+    try:
+        import winreg  # 标准库（仅 Windows）
+
+        base_key = r"Software\Microsoft\Windows\CurrentVersion\Explorer"
+        for sub in ("User Shell Folders", "Shell Folders"):
+            try:
+                k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, base_key + "\\" + sub)
+                v, typ = winreg.QueryValueEx(k, name)
+                winreg.CloseKey(k)
+                s = os.path.expandvars(str(v)) if typ == winreg.REG_EXPAND_SZ else str(v)
+                if s.strip():
+                    return Path(s)
+            except FileNotFoundError:
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    return fallback
+
+
+def _desktop_dir() -> Path:
+    base = os.environ.get("USERPROFILE") or str(Path.home())
+    return _shell_folder("Desktop", Path(base) / "Desktop")
+
+
+def _programs_dir() -> Path:
+    base = os.environ.get("APPDATA") or str(Path.home())
+    return _shell_folder("Programs", Path(base) / "Microsoft" / "Windows" /
+                         "Start Menu" / "Programs")
+
+
 def make_shortcut(lnk: Path, target: Path, workdir: Path, desc: str = "") -> bool:
     """建 .lnk：用 Windows 自带的 **WScript.Shell**（cscript 执行临时 .vbs）。
 
@@ -127,10 +164,8 @@ def write_uninstaller(inst: Path) -> None:
         bat.write_text(
             "@echo off\r\n"
             "taskkill /F /IM %s >nul 2>&1\r\n" % EXE_NAME +
-            'del /f /q "%s" >nul 2>&1\r\n' % _ansi(str(Path.home() / "Desktop" / (APP_NAME + ".lnk"))) +
-            'rd /s /q "%s" >nul 2>&1\r\n' % _ansi(str(
-                Path(os.environ.get("APPDATA") or str(Path.home())) /
-                "Microsoft" / "Windows" / "Start Menu" / "Programs" / APP_NAME)) +
+            'del /f /q "%s" >nul 2>&1\r\n' % _ansi(str(_desktop_dir() / (APP_NAME + ".lnk"))) +
+            'rd /s /q "%s" >nul 2>&1\r\n' % _ansi(str(_programs_dir() / APP_NAME)) +
             'reg delete "%s" /f >nul 2>&1\r\n' % _REG_KEY +
             "timeout /t 1 /nobreak >nul\r\n"
             'cd /d "%%~dp0\\.."\r\n'

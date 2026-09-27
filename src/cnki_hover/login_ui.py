@@ -26,9 +26,9 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QCompleter, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -261,19 +261,6 @@ class LoginController(QObject):
         return dlg.exec() == QDialog.Accepted
 
 
-class _InstitutionLoader(QThread):
-    """后台取机构清单（首次联网约 11MB，之后读本地缓存，不卡 UI）。"""
-
-    loaded = Signal(list)
-    failed = Signal(str)
-
-    def run(self) -> None:  # noqa: D102
-        try:
-            self.loaded.emit(A.all_institution_names())
-        except Exception as e:  # noqa: BLE001
-            self.failed.emit("%s: %s" % (type(e).__name__, e))
-
-
 class LoginDialog(QDialog):
     """机构登录引导窗（纯原生，不内嵌浏览器）。"""
 
@@ -302,43 +289,36 @@ class LoginDialog(QDialog):
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         form.setSpacing(10)
 
-        # 机构：**可编辑下拉 + 自动补全** —— 运行时从 CARSI 联邦取回全国机构清单
-        # （实测 7967 所），用户敲学校名即可选中，无需任何手工配置文件。
-        self.ed_institution = QComboBox()
-        self.ed_institution.setEditable(True)
-        self.ed_institution.setInsertPolicy(QComboBox.NoInsert)
-        self.ed_institution.setMaxVisibleItems(14)
-        self.ed_institution.setMinimumWidth(240)
-        self.ed_institution.setEditText(
+        # 机构：**普通文本框，手动输入**（用户明确要求：不要搜索/下拉，像第一代一样直接输）。
+        # 机构名 -> entityID 的解析在**后台静默**完成（本地已记住的优先，其次 CARSI 清单），
+        # 登录成功后自动记住，之后不再需要任何配置。
+        self.ed_institution = QLineEdit(
             str(self.ctl.config.get("institution", "")) or "")
-        self._completer = QCompleter([], self)
-        self._completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self._completer.setFilterMode(Qt.MatchContains)
-        self._completer.setMaxVisibleItems(14)
-        self.ed_institution.setCompleter(self._completer)
-        self.lb_inst_tip = QLabel("正在获取机构列表…")
-        self.lb_inst_tip.setObjectName("tip")
-        self._inst_names: list = []
-        self._loader = _InstitutionLoader(self)
-        self._loader.loaded.connect(self._on_inst_loaded)
-        self._loader.failed.connect(self._on_inst_failed)
-        self._loader.start()
-        # 已配置过的机构直接进下拉，立刻可用（不必等清单加载完）
-        try:
-            for n in A.configured_institutions():
-                self.ed_institution.addItem(n)
-        except Exception:  # noqa: BLE001
-            pass
+        self.ed_institution.setPlaceholderText("学校名称，如：福建理工大学")
+        self.ed_institution.setMinimumWidth(240)
 
         self.ed_username = QLineEdit()
         self.ed_password = QLineEdit()
         self.ed_password.setEchoMode(QLineEdit.Password)
         self.ed_username.setPlaceholderText("学号 / 工号")
         self.ed_password.setPlaceholderText("统一身份认证密码")
-        self.ed_institution.lineEdit().setPlaceholderText("输入学校名，如：示例大学")
+
+        # 本地凭证文件（secrets/account.txt）存在时**自动回填**：第一代就是这么用的，
+        # 有凭证的用户打开窗即已填好，直接点「登录」，不必手输（手输易错——
+        # 实测反馈：密码输错被误报成 consent/风控问题）。无该文件时不预填，行为不变。
+        try:
+            saved = self.ctl.credentials_from_file()
+        except Exception:  # noqa: BLE001
+            saved = None
+        if saved is not None:
+            if not self.ed_institution.text().strip() and saved.institution:
+                self.ed_institution.setText(saved.institution)
+            if saved.username:
+                self.ed_username.setText(saved.username)
+            if saved.password:
+                self.ed_password.setText(saved.password)
 
         form.addRow("机构", self.ed_institution)
-        form.addRow("", self.lb_inst_tip)
         form.addRow("账号", self.ed_username)
         form.addRow("密码", self.ed_password)
         root.addLayout(form)
@@ -362,22 +342,10 @@ class LoginDialog(QDialog):
 
         self.ed_password.returnPressed.connect(self.submit)
 
-    # ---- 机构清单 ----
-    def _on_inst_loaded(self, names: list) -> None:
-        self._inst_names = list(names or [])
-        cur = self.ed_institution.currentText()
-        self._completer.model().setStringList(self._inst_names)
-        self.lb_inst_tip.setText("已就绪：共 %d 所机构，输入校名即可自动补全" % len(self._inst_names))
-        if cur:
-            self.ed_institution.setEditText(cur)
-
-    def _on_inst_failed(self, msg: str) -> None:
-        self.lb_inst_tip.setText("机构清单获取失败（可手动填写校名，需与知网列表一致）：%s" % msg[:60])
-
     # ---- 供自动化验收使用 ----
     def set_credentials(self, username: str, password: str, institution: Optional[str] = None) -> None:
         if institution:
-            self.ed_institution.setEditText(institution)
+            self.ed_institution.setText(institution)
         self.ed_username.setText(username)
         self.ed_password.setText(password)
 
@@ -389,7 +357,7 @@ class LoginDialog(QDialog):
         ok, msg = self.ctl.login_with(
             self.ed_username.text().strip(),
             self.ed_password.text(),
-            self.ed_institution.currentText().strip() or DEFAULT_INSTITUTION,
+            self.ed_institution.text().strip() or DEFAULT_INSTITUTION,
         )
         self.btn_login.setEnabled(True)
         self.btn_login.setText("登录")

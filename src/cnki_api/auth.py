@@ -247,18 +247,30 @@ def _entity_id_for(institution: str) -> str:
 
 
 def _extract_form(html_text: str, base_url: str):
-    """从 HTML 抽取第一个 <form> 的 (action绝对URL, {字段名: 值})。无表单返回 None。"""
+    """从 HTML 抽取第一个 <form> 的 (action绝对URL, {字段名: 值})。无表单返回 None。
+
+    ⚠️ **同名多值必须保留**（实测踩坑）：Shibboleth 的**属性授权页(consent)** 上有
+    **多个同名** `_shib_idp_consentIds` 复选框（每个属性一个）。早期用 dict 直接赋值，
+    同名会互相覆盖 → 只提交了最后一个属性 → IdP 认为授权不完整，**反复要求授权**，
+    表现为卡在 consent 页、`execution=e1s12` 一路递增、最终拿不到会话 Cookie（用户实测反馈）。
+    现在同名聚合成 list，requests 会自动展开成多值表单。
+    """
     fm = re.search(r'<form[^>]*action="([^"]*)"[^>]*?(?:method="([^"]*)")?', html_text, re.I)
     if not fm:
         return None
     action = html.unescape(urljoin(base_url, fm.group(1) or ""))
-    inputs: dict[str, str] = {}
+    inputs: dict = {}
     for m in re.finditer(r'<input\b([^>]*)>', html_text, re.I):
         attrs = m.group(1)
         nam = re.search(r'name="([^"]*)"', attrs, re.I)
         val = re.search(r'value="([^"]*)"', attrs, re.I)
         if nam and val is not None:
-            inputs[html.unescape(nam.group(1))] = html.unescape(val.group(1))
+            k, v = html.unescape(nam.group(1)), html.unescape(val.group(1))
+            if k in inputs:
+                prev = inputs[k]
+                inputs[k] = (prev if isinstance(prev, list) else [prev]) + [v]
+            else:
+                inputs[k] = v
     return action, inputs
 
 
@@ -307,8 +319,24 @@ def _follow_saml_login(client: CnkiHttpClient, creds: Credentials) -> None:
         timeout=20,
     )
 
+    # 2.5) 凭证被拒时，IdP 会**重新渲染登录页** —— 必须在这里识别，
+    #      否则会一路走到最后才报"没拿到 Cookie"，用户完全不知道哪错了（用户实测反馈）。
+    if IDP_USER_FIELD in r2.text:
+        low = r2.text.lower()
+        if "captcha" in low or "验证码" in r2.text or "slider" in low:
+            raise LoginError(
+                "学校统一身份认证要求**验证码/滑块**（多次尝试后常见风控）。\n"
+                "纯 HTTP 登录无法过滑块：请到浏览器里登录一次学校统一身份认证，"
+                "然后再回来重试。"
+            )
+        m = re.search(r"(?:密码|口令|用户名|账号|学号|工号)[^<>]{0,40}?(?:错误|不正确|有误|失败)",
+                      r2.text)
+        hint = m.group(0).strip() if m else "IdP 重新返回了登录表单"
+        raise LoginError("登录被拒绝：%s —— 请核对账号/密码（注意大小写、是否含空格）" % hint)
+
     # 3) 跟随 consent 表单 + SAML POST 绑定，直到落到 cnki 内容域
     cur, resp = post_url, r2
+    seen_consent = {}          # consent 页出现次数（防死循环）
     for _ in range(16):
         if resp.status_code in (301, 302, 303, 307, 308):
             loc = resp.headers.get("Location")
@@ -320,6 +348,16 @@ def _follow_saml_login(client: CnkiHttpClient, creds: Credentials) -> None:
             f = _extract_form(resp.text, cur)
             if f and ("SAMLResponse" in f[1] or "_eventId_proceed" in f[1]):
                 aurl, inputs = f
+                if "_shib_idp_consentIds" in inputs:
+                    key = str(cur).split("?")[0] + "|" + str(len(inputs.get("_shib_idp_consentIds") or []))
+                    seen_consent[key] = seen_consent.get(key, 0) + 1
+                    if seen_consent[key] >= 3:
+                        raise LoginError(
+                            "学校统一身份认证的**属性授权页(consent)反复出现**，无法自动完成。\n"
+                            "这通常是学校侧要求你先在浏览器里手动确认一次授权。\n"
+                            "请用浏览器打开 https://fsso.cnki.net 走一遍机构登录（勾选同意授权），"
+                            "然后再回来重试。"
+                        )
                 # consent: 只保留「同意」，去掉「拒绝」
                 inputs.pop("_eventId_AttributeReleaseRejected", None)
                 # IdP 的 Redirect 包装：拆出内嵌的真实 SP ACS
@@ -335,7 +373,31 @@ def _follow_saml_login(client: CnkiHttpClient, creds: Credentials) -> None:
     # 4) 校验是否真的拿到 CNKI 会话 Cookie
     got = [c.name for c in sess.cookies if c.name in _CNKI_AUTH_COOKIES]
     if not got:
-        raise LoginError("登录流程结束但未获得 CNKI 会话 Cookie（可能凭证被拒或风控）")
+        # 先识别「凭证被拒」页：fjut 实测密码错误时 POST 凭证返回 302、
+        # 落地 e1s2 的**无表单**错误页（正文「用户名或密码错误」），2.5 步的
+        # j_username 检测抓不到它 → 必须在这里兜住，否则误报成 consent/风控。
+        plain = html.unescape(resp.text or "")
+        if ("用户名或密码" in plain and "错误" in plain) or "密码错误" in plain \
+                or "账号或密码错误" in plain:
+            raise LoginError(
+                "登录被拒绝：用户名或密码错误 —— 请核对账号/密码"
+                "（注意大小写与空格；若忘记密码请到学校统一身份认证重置）"
+            )
+        # 给出可定位的上下文：落在哪个域、页面上有没有验证码/错误提示
+        low = (resp.text or "").lower()
+        marks = []
+        if "captcha" in low or "验证码" in (resp.text or ""):
+            marks.append("页面含验证码/滑块")
+        if "samlresponse" in low:
+            marks.append("页面含 SAMLResponse（未消费）")
+        if "consent" in low or "attribute" in low:
+            marks.append("页面疑似仍在属性授权页")
+        raise LoginError(
+            "登录流程结束但未获得 CNKI 会话 Cookie。\n"
+            "  最终落点：%s\n  %s\n  （多为凭证被拒或学校侧风控；"
+            "可先到浏览器登录一次学校统一身份认证再试）"
+            % (cur, "；".join(marks) if marks else "页面无验证码/错误标记")
+        )
     log_event(LOG, "cnki_login_ok", institution=creds.institution,
               cookies=len(got))
 
@@ -372,6 +434,15 @@ def login(
                           message=f"登录异常：{type(e).__name__}: {e}")
 
     cookies = {c.name: c.value for c in client.session.cookies}
+    # 登录成功 → 记住该机构（写运行目录 institutions.json），之后**完全免配置**。
+    # ⚠️ 必须放在 login() 里：这里才有 creds；放进 get_authenticated_client 会 NameError
+    #    （实测踩坑：`name 'creds' is not defined`）。
+    try:
+        inst_name = str(creds.institution or "").strip()
+        if inst_name:
+            remember_institution(inst_name, resolve_institution(inst_name))
+    except Exception as e:  # noqa: BLE001   记不住机构不应影响登录结果
+        log_event(LOG, "remember_institution_failed", error=str(e)[:100])
     return AuthResult(
         ok=True,
         method="carsi-saml",
@@ -430,9 +501,6 @@ def get_authenticated_client(force_login: bool = False) -> "CnkiHttpClient":
     if not res.ok:
         raise LoginError(res.message)
     client.save_to_store()
-    # 登录成功 → 记住该机构（写 institutions.json），之后**完全免配置**启动
-    remember_institution(str(creds.institution or ""),
-                         resolve_institution(str(creds.institution or "")))
     _CLIENT_SINGLETON = client
     return client
 

@@ -27,3 +27,6 @@ _build.log
 _smoke.json
 _smoke_home/
 _release_notes.md
+
+# Setup 安装包不入库（走 Release 附件）
+CNKI-Hover-Setup*.exe
