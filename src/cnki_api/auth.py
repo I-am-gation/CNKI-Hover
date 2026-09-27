@@ -65,6 +65,140 @@ def configured_institutions() -> tuple:
     load_institutions()
     return tuple(sorted(INSTITUTION_ENTITY_ID.keys()))
 
+
+# ---------------------------------------------------------------- CARSI 机构清单
+# 有了它就**不需要任何手工配置**：运行时从 CARSI 联邦取回全国机构清单
+# （实测 7967 条，含 entityID + 中文名），用户敲自己学校名即可自动补全并登录。
+DISCO_FEED_URL = "https://fsso.cnki.net/Shibboleth.sso/DiscoFeed"
+DISCO_CACHE_FILE = "institutions.disco.json"
+
+
+def _bare_client():
+    """未登录也能用的客户端（DiscoFeed 是公开接口，不需要会话）。"""
+    from cnki_hover.http_client import CnkiHttpClient  # 局部导入避免循环依赖
+
+    try:
+        return CnkiHttpClient()
+    except TypeError:
+        from cnki_hover.config import load_config
+
+        return CnkiHttpClient(load_config())
+
+
+def fetch_discofeed(force: bool = False) -> dict:
+    """拉取 CARSI 机构清单并缓存（精简为 `中文名 -> entityID`）。
+
+    首次约 11MB，缓存后仅几百 KB；之后完全离线可用。
+    """
+    from cnki_hover.paths import PROJECT_ROOT  # 局部导入避免循环依赖
+
+    cache = PROJECT_ROOT / DISCO_CACHE_FILE
+    if not force and cache.is_file():
+        try:
+            return json.loads(cache.read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            log_event(LOG, "discofeed_cache_bad", error=str(e)[:100])
+    try:
+        r = _bare_client().get(DISCO_FEED_URL)
+        data = json.loads(r.content.decode("utf-8", errors="replace"))
+    except Exception as e:  # noqa: BLE001
+        log_event(LOG, "discofeed_failed", error=str(e)[:120])
+        return {}
+    out: dict = {}
+    for it in data if isinstance(data, list) else []:
+        eid = (it.get("entityID") or "").strip()
+        if not eid:
+            continue
+        zh = [d.get("value", "") for d in (it.get("DisplayNames") or [])
+              if d.get("lang") == "zh"] or [d.get("value", "") for d in (it.get("DisplayNames") or [])]
+        for n in zh:
+            n = (n or "").strip()
+            if n:
+                out[n] = eid
+    try:
+        cache.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        log_event(LOG, "discofeed_cache_write_failed", error=str(e)[:100])
+    log_event(LOG, "discofeed_loaded", count=len(out))
+    return out
+
+
+def search_institutions(keyword: str, limit: int = 60) -> list:
+    """按关键字模糊匹配机构名（用户自定义优先，然后是 CARSI 清单）。"""
+    kw = (keyword or "").strip()
+    if not kw:
+        return []
+    pool: dict = {}
+    pool.update(INSTITUTION_ENTITY_ID)
+    try:
+        for k, v in fetch_discofeed(force=False).items():
+            pool.setdefault(k, v)
+    except Exception:  # noqa: BLE001
+        pass
+    hits = [n for n in pool if kw in n]
+    hits.sort(key=lambda n: (0 if n.startswith(kw) else 1, len(n)))
+    return hits[:limit]
+
+
+def all_institution_names() -> list:
+    """机构名全集（供自动补全）。"""
+    pool: dict = {}
+    pool.update(INSTITUTION_ENTITY_ID)
+    try:
+        for k, v in fetch_discofeed(force=False).items():
+            pool.setdefault(k, v)
+    except Exception:  # noqa: BLE001
+        pass
+    return sorted(pool.keys())
+
+
+def resolve_institution(name: str) -> str:
+    """机构名 -> entityID。本地配置 → CARSI 精确 → CARSI 唯一模糊匹配。"""
+    name = (name or "").strip()
+    if not name:
+        return ""
+    load_institutions()
+    if name in INSTITUTION_ENTITY_ID:
+        return INSTITUTION_ENTITY_ID[name]
+    try:
+        pool = fetch_discofeed(force=False)
+    except Exception:  # noqa: BLE001
+        pool = {}
+    if name in pool:
+        return pool[name]
+    cands = {eid for n, eid in pool.items() if name in n}
+    if len(cands) == 1:
+        return next(iter(cands))
+    return ""
+
+
+def remember_institution(name: str, entity_id: str) -> None:
+    """登录成功后记住机构 → 写入 `institutions.json`，之后**完全免配置**。"""
+    from cnki_hover.paths import PROJECT_ROOT  # 局部导入避免循环依赖
+
+    name, entity_id = (name or "").strip(), (entity_id or "").strip()
+    if not name or not entity_id:
+        return
+    p = PROJECT_ROOT / _INSTITUTION_FILE
+    data: dict = {}
+    try:
+        if p.is_file():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    if data.get(name) == entity_id:
+        INSTITUTION_ENTITY_ID[name] = entity_id
+        return
+    data[name] = entity_id
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        INSTITUTION_ENTITY_ID[name] = entity_id
+        log_event(LOG, "institution_remembered", institution=name)
+    except Exception as e:  # noqa: BLE001
+        log_event(LOG, "institution_remember_failed", error=str(e)[:100])
+
 # 真实的 SP ACS（SAML POST 绑定消费地址），consent 表单的 action 是 IdP 的
 # "Redirect 包装"，需拆出内嵌的真实 ACS 再 POST。
 FSSO_SP_ACS = "https://fsso.cnki.net/Shibboleth.sso/SAML2/POST"
@@ -96,16 +230,20 @@ class AuthResult:
 
 
 def _entity_id_for(institution: str) -> str:
-    load_institutions()
-    eid = INSTITUTION_ENTITY_ID.get(institution)
-    if not eid:
-        raise LoginError(
-            f"未配置机构「{institution}」的 IdP entityID。\n"
-            f"请在运行目录创建 {_INSTITUTION_FILE}（键=机构名，值=entityID），\n"
-            f"entityID 取自 https://fsso.cnki.net/Shibboleth.sso/DiscoFeed ，\n"
-            f"可参考仓库里的 institutions.example.json。"
-        )
-    return eid
+    """机构名 -> entityID（本地配置 / CARSI 清单）。找不到时给出可操作的提示。"""
+    eid = resolve_institution(institution)
+    if eid:
+        return eid
+    cands = search_institutions(institution, limit=8)
+    tip = ""
+    if cands:
+        tip = "你是否想找：" + "、".join(cands[:6])
+    else:
+        tip = ("请确认机构名（可从输入框的下拉列表里选）；"
+               "首次使用需要联网获取一次机构清单。")
+    raise LoginError(
+        f"未能确定机构「{institution}」的 IdP entityID。\n{tip}"
+    )
 
 
 def _extract_form(html_text: str, base_url: str):
@@ -292,6 +430,9 @@ def get_authenticated_client(force_login: bool = False) -> "CnkiHttpClient":
     if not res.ok:
         raise LoginError(res.message)
     client.save_to_store()
+    # 登录成功 → 记住该机构（写 institutions.json），之后**完全免配置**启动
+    remember_institution(str(creds.institution or ""),
+                         resolve_institution(str(creds.institution or "")))
     _CLIENT_SINGLETON = client
     return client
 

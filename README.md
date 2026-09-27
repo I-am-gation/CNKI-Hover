@@ -23,26 +23,17 @@
 | 账号 | 学校统一身份认证账号（学号 / 工号 + 密码） |
 | Python | 3.11+（源码运行） |
 
-## ⚙️ 配置你的机构（首次使用必读）
+## ⚙️ 零配置：直接选学校就能登录
 
-发布版**不内置任何学校信息**，需要你自己配置两处：
+不需要手写任何配置文件。程序在首次打开登录窗时，会从 **CARSI 联邦**取回全国高校清单
+（实测 **7967 所**，含每所学校的 IdP entityID），「机构」输入框**边打边自动补全**：
 
-**1) `institutions.json`**（放在运行目录，即本文件同级）—— 声明机构名 → IdP entityID 的映射：
+- 敲 `福建理工` → 自动列出「福建理工大学」，选中即可；
+- 登录成功后自动记住你的机构，之后开机即用、长期免登录；
+- 清单首次联网获取（约 11MB），随后缓存到本地，之后完全离线可用。
 
-```json
-{
-  "你的机构名称": "https://idp.example.edu.cn/idp/shibboleth"
-}
-```
-
-entityID 的获取方式：浏览器打开 `https://fsso.cnki.net/Shibboleth.sso/DiscoFeed`，
-`Ctrl+F` 搜你学校的中文名，复制对应条目的 `entityID`。可参考仓库里的 `institutions.example.json`。
-
-**2) `config.json`**（首次运行会自动生成）—— 把 `institution` 改成你在 `institutions.json` 里写的机构名，
-或直接在登录界面选择/输入。
-
-> 你的凭证只用于当次向学校 IdP 认证，**不会**写入配置；应用保存的是知网返回的会话 Cookie，
-> 以 Fernet 对称加密存放在本机（`%APPDATA%\CNKI-Hover\config\session.enc`）。
+> 完全离线时若缓存为空，可手动在运行目录放 `institutions.json`（模板见
+> `institutions.example.json`），键=机构名，值=entityID。
 
 ### 凭证文件（可选）
 

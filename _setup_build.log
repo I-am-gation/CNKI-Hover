@@ -1,0 +1,67 @@
+194 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.7
+195 INFO: Python: 3.13.14
+238 INFO: Platform: Windows-11-10.0.22631-SP0
+238 INFO: Python environment: D:\Projects\Active\CNKI-Hover\.venv
+240 INFO: wrote D:\Projects\Active\CNKI-Hover\github发布版本\CNKI-Hover-Setup.spec
+243 INFO: Removing temporary files and cleaning cache in C:\Users\22219\AppData\Local\pyinstaller
+245 INFO: Module search paths (PYTHONPATH):
+['D:\\Projects\\Active\\CNKI-Hover\\github发布版本',
+ 'D:\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\vendor\\shim',
+ 'C:\\Users\\22219\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python313.zip',
+ 'C:\\Users\\22219\\.workbuddy\\binaries\\python\\versions\\3.13.12\\DLLs',
+ 'C:\\Users\\22219\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib',
+ 'C:\\Users\\22219\\.workbuddy\\binaries\\python\\versions\\3.13.12',
+ 'D:\\Projects\\Active\\CNKI-Hover\\.venv',
+ 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages',
+ 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\win32',
+ 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\win32\\lib',
+ 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\pythonwin',
+ 'D:\\Projects\\Active\\CNKI-Hover\\github发布版本\\tools',
+ 'D:\\Projects\\Active\\CNKI-Hover\\github发布版本\\src']
+636 INFO: Appending 'datas' from .spec
+650 INFO: checking Analysis
+650 INFO: Building Analysis because Analysis-00.toc is non existent
+650 INFO: Looking for Python shared library...
+650 INFO: Using Python shared library: C:\Users\22219\.workbuddy\binaries\python\versions\3.13.12\python313.dll
+650 INFO: Running Analysis Analysis-00.toc
+650 INFO: Target bytecode optimization level: 0
+651 INFO: Initializing module dependency graph...
+652 INFO: Initializing module graph hook caches...
+664 INFO: Analyzing modules for base_library.zip ...
+1804 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+2774 INFO: Processing standard module hook 'hook-math.py' from 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+4171 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5134 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\PyInstaller\\hooks'
+5696 INFO: Caching module dependency graph...
+5732 INFO: Analyzing D:\Projects\Active\CNKI-Hover\github发布版本\tools\installer.py
+5741 INFO: Processing module hooks (post-graph stage)...
+5746 INFO: Performing binary vs. data reclassification (202 entries)
+5817 INFO: Looking for ctypes DLLs
+5822 INFO: Analyzing run-time hooks ...
+5823 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\Projects\\Active\\CNKI-Hover\\.venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+5830 INFO: Creating base_library.zip...
+5852 INFO: Looking for dynamic libraries
+6038 INFO: Extra DLL search directories (AddDllDirectory): []
+6038 INFO: Extra DLL search directories (PATH): []
+9497 INFO: Warnings written to D:\Projects\Active\CNKI-Hover\github发布版本\build\CNKI-Hover-Setup\warn-CNKI-Hover-Setup.txt
+9519 INFO: Graph cross-reference written to D:\Projects\Active\CNKI-Hover\github发布版本\build\CNKI-Hover-Setup\xref-CNKI-Hover-Setup.html
+9547 INFO: checking PYZ
+9547 INFO: Building PYZ because PYZ-00.toc is non existent
+9547 INFO: Building PYZ (ZlibArchive) D:\Projects\Active\CNKI-Hover\github发布版本\build\CNKI-Hover-Setup\PYZ-00.pyz
+9679 INFO: Building PYZ (ZlibArchive) D:\Projects\Active\CNKI-Hover\github发布版本\build\CNKI-Hover-Setup\PYZ-00.pyz completed successfully.
+9692 INFO: checking PKG
+9692 INFO: Building PKG because PKG-00.toc is non existent
+9692 INFO: Building PKG (CArchive) CNKI-Hover-Setup.pkg
+36344 INFO: Building PKG (CArchive) CNKI-Hover-Setup.pkg completed successfully.
+36350 INFO: Bootloader D:\Projects\Active\CNKI-Hover\.venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+36350 INFO: checking EXE
+36351 INFO: Building EXE because EXE-00.toc is non existent
+36351 INFO: Building EXE from EXE-00.toc
+36351 INFO: Copying bootloader EXE to D:\Projects\Active\CNKI-Hover\github发布版本\dist\CNKI-Hover-Setup.exe
+36360 INFO: Copying icon to EXE
+36367 INFO: Copying 0 resources to EXE
+36367 INFO: Embedding manifest in EXE
+36373 INFO: Appending PKG archive to EXE
+36447 INFO: Fixing EXE headers
+36946 INFO: Building EXE from EXE-00.toc completed successfully.
+36953 INFO: Build complete! The results are available in: D:\Projects\Active\CNKI-Hover\github发布版本\dist
